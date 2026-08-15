@@ -23,7 +23,7 @@ from pathlib import Path
 # do not rename
 async def custom_site():
     import embed
-    platform.document.body.style.background = "#f3cce8"
+    platform.document.body.style.background = "#bbe8ff"
 
     platform.window.transfer.hidden = true
     bundle = "nylah_dino_web"
@@ -190,8 +190,7 @@ config = {
             box-sizing: border-box;
             padding: 20px;
             color: #60356f;
-            background:
-                radial-gradient(circle at 50% 42%, #fff4fb 0%, #f3cce8 52%, #bf89c4 100%);
+            background: #bbe8ff;
             text-align: center;
         }
 
@@ -202,7 +201,6 @@ config = {
             max-height: 58vh;
             object-fit: contain;
             border-radius: 22%;
-            filter: drop-shadow(0 10px 15px rgba(82, 39, 91, 0.25));
         }
 
         #loading-text {
@@ -230,31 +228,6 @@ config = {
             margin: 0 !important;
             image-rendering: auto;
             visibility: hidden;
-        }
-
-        #rotate-message {
-            display: none;
-            position: fixed;
-            inset: 0;
-            z-index: 100;
-            box-sizing: border-box;
-            padding:
-                max(24px, env(safe-area-inset-top, 0px))
-                max(24px, env(safe-area-inset-right, 0px))
-                max(24px, env(safe-area-inset-bottom, 0px))
-                max(24px, env(safe-area-inset-left, 0px));
-            align-items: center;
-            justify-content: center;
-            color: #60356f;
-            background: radial-gradient(circle at 50% 42%, #fff4fb 0%, #f3cce8 52%, #bf89c4 100%);
-            font: 700 clamp(24px, 7vw, 42px)/1.2 Arial, sans-serif;
-            text-align: center;
-            text-shadow: 0 2px 0 rgba(255, 255, 255, 0.8);
-        }
-
-        @media (orientation: portrait) and (pointer: coarse) {
-            #rotate-message { display: flex; }
-            #game-stage { visibility: hidden; }
         }
 
         body {
@@ -309,8 +282,6 @@ config = {
 </head>
 
 <body>
-
-    <div id="rotate-message" role="status">Turn your phone sideways to play</div>
 
     <div id="loading_screen" role="status" aria-live="polite">
         <img id="loading-dino" src="dino_purple.png" alt="Cute purple baby dinosaur">
@@ -471,15 +442,22 @@ frameborder="1"
 
             playAudioGestureReceived = true;
             console.log("[Nylah audio] PLAY tap received", { gameX, gameY, canvasRect: rect });
-            console.log("[Nylah audio] audio unlock/resume attempted");
+            console.log("[Nylah audio] music play attempted via PLAY audio unlock");
             const contexts = [
                 globalThis.Module?.SDL2?.audioContext,
                 globalThis.Module?.audioContext,
                 globalThis.SDL2?.audioContext
             ];
-            for (const context of contexts) {
-                if (context?.state === "suspended") {
-                    context.resume().catch(() => {});
+            const availableContexts = [...new Set(contexts.filter(Boolean))];
+            if (availableContexts.length === 0) {
+                console.warn("[Nylah audio] mixer initialized: Web Audio context not exposed; continuing with pygame mixer unlock");
+            }
+            for (const context of availableContexts) {
+                console.log("[Nylah audio] mixer initialized", { state: context.state });
+                if (context.state === "suspended") {
+                    context.resume()
+                        .then(() => console.log("[Nylah audio] mixer initialized and resumed", { state: context.state }))
+                        .catch((error) => console.error("[Nylah audio] audio failure exception", error));
                 }
             }
         }, { passive: true });
