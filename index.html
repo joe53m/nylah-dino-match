@@ -77,6 +77,7 @@ async def custom_site():
     platform.window.canvas.style.visibility = "visible"
     platform.window.config.gui_divider = 1
     platform.window.window_resize()
+    platform.window.sizeNylahGameCanvas()
     print("default.tmpl: done")
 
     shell.interactive()
@@ -147,7 +148,7 @@ config = {
     <title>nylah_dino_web</title>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes"/>
 
@@ -157,14 +158,13 @@ config = {
     <style>
         html,
         body {
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             height: 100dvh;
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background:
-                radial-gradient(circle at 50% 45%, #f8d5ef 0%, #dca5dc 48%, #68456f 100%);
+            background: #bbe8ff;
         }
 
         #transfer,
@@ -215,14 +215,10 @@ config = {
 
         #game-stage {
             position: fixed;
-            top: env(safe-area-inset-top, 0px);
-            right: env(safe-area-inset-right, 0px);
-            bottom: env(safe-area-inset-bottom, 0px);
-            left: env(safe-area-inset-left, 0px);
+            inset: 0;
             display: grid;
             place-items: center;
             overflow: hidden;
-            container-type: size;
         }
 
         /* No canvas border or padding: its CSS box maps directly to 800x480. */
@@ -230,12 +226,6 @@ config = {
             display: block;
             border: 0 !important;
             background-color: transparent;
-            /* Fallback, then safe-area-aware container sizing on modern iOS. */
-            width: min(100vw, 166.6667dvh) !important;
-            height: min(100dvh, 60vw) !important;
-            width: min(100cqw, 166.6667cqh) !important;
-            height: min(100cqh, 60cqw) !important;
-            aspect-ratio: 5 / 3;
             padding: 0 !important;
             margin: 0 !important;
             image-rendering: auto;
@@ -429,9 +419,59 @@ frameborder="1"
 
         infobox.style.display = "none"
 
-        // Resume Web Audio from the same deliberate canvas tap Pygame receives.
-        // There is intentionally no separate launcher or audio-unlock control.
-        canvas.addEventListener("pointerdown", () => {
+        const GAME_WIDTH = 800;
+        const GAME_HEIGHT = 480;
+        const GAME_RATIO = GAME_WIDTH / GAME_HEIGHT;
+        const PLAY_RECT = { left: 290, top: 335, right: 510, bottom: 445 };
+
+        function sizeGameCanvas() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const viewportRatio = width / height;
+            let displayWidth;
+            let displayHeight;
+
+            if (viewportRatio > GAME_RATIO) {
+                displayHeight = height;
+                displayWidth = height * GAME_RATIO;
+            } else {
+                displayWidth = width;
+                displayHeight = width / GAME_RATIO;
+            }
+
+            canvas.style.setProperty("width", `${displayWidth}px`, "important");
+            canvas.style.setProperty("height", `${displayHeight}px`, "important");
+            console.log("[Nylah resize]", {
+                innerWidth: width,
+                innerHeight: height,
+                displayWidth,
+                displayHeight,
+                canvasRect: canvas.getBoundingClientRect()
+            });
+        }
+
+        window.addEventListener("resize", sizeGameCanvas);
+        window.addEventListener("orientationchange", () => {
+            sizeGameCanvas();
+            requestAnimationFrame(sizeGameCanvas);
+        });
+        globalThis.sizeNylahGameCanvas = sizeGameCanvas;
+        sizeGameCanvas();
+
+        // Resume Web Audio only from a pointer that maps to the existing PLAY
+        // button. getBoundingClientRect() keeps the hit test correct after CSS scaling.
+        let playAudioGestureReceived = false;
+        canvas.addEventListener("pointerdown", (event) => {
+            if (playAudioGestureReceived) return;
+            const rect = canvas.getBoundingClientRect();
+            const gameX = (event.clientX - rect.left) * GAME_WIDTH / rect.width;
+            const gameY = (event.clientY - rect.top) * GAME_HEIGHT / rect.height;
+            if (gameX < PLAY_RECT.left || gameX > PLAY_RECT.right ||
+                    gameY < PLAY_RECT.top || gameY > PLAY_RECT.bottom) return;
+
+            playAudioGestureReceived = true;
+            console.log("[Nylah audio] PLAY tap received", { gameX, gameY, canvasRect: rect });
+            console.log("[Nylah audio] audio unlock/resume attempted");
             const contexts = [
                 globalThis.Module?.SDL2?.audioContext,
                 globalThis.Module?.audioContext,
