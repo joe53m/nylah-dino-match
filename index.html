@@ -148,7 +148,7 @@ config = {
     <title>nylah_dino_web</title>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes"/>
 
@@ -233,12 +233,24 @@ config = {
             float: none !important;
             image-rendering: auto;
             visibility: hidden;
+            width: 100vw !important;
+            height: auto !important;
+            aspect-ratio: 5 / 3;
+            touch-action: pinch-zoom;
+        }
+
+        /* Fill a wide landscape viewport by height without changing 800x480. */
+        @media (orientation: landscape) and (min-aspect-ratio: 5 / 3) {
+            #canvas {
+                width: auto !important;
+                height: 100dvh !important;
+            }
         }
 
         body {
             font-family: arial;
             overscroll-behavior: none;
-            touch-action: none;
+            touch-action: pinch-zoom;
         }
 
         .topright{
