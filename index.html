@@ -148,7 +148,7 @@ config = {
     <title>nylah_dino_web</title>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes"/>
 
@@ -221,10 +221,12 @@ config = {
 
         /* No canvas border or padding: its CSS box maps directly to 800x480. */
         #canvas {
+            --game-zoom: 1;
             position: fixed !important;
             left: 50% !important;
             top: 50% !important;
-            transform: translate(-50%, -50%) !important;
+            transform: translate(-50%, -50%) scale(var(--game-zoom)) !important;
+            transform-origin: center center !important;
             margin: 0 !important;
             padding: 0 !important;
             display: block !important;
@@ -236,6 +238,7 @@ config = {
             width: 100vw !important;
             height: auto !important;
             aspect-ratio: 5 / 3;
+            touch-action: none;
         }
 
         /* Fill a wide landscape viewport by height without changing 800x480. */
@@ -576,6 +579,139 @@ frameborder="1"
         canvas.addEventListener("pointerdown", unlockNylahAudioFromPlay, { passive: true });
         canvas.addEventListener("touchstart", unlockNylahAudioFromPlay, { passive: true });
         canvas.addEventListener("click", unlockNylahAudioFromPlay, { passive: true });
+
+        // Keep Safari's viewport fixed while providing application-level zoom.
+        // Raw touch input is consumed here. A gesture that stays single-touch is
+        // replayed as one mouse tap for SDL/Pygame; pinch pointers are never
+        // forwarded as gameplay input.
+        const MIN_GAME_ZOOM = 1.0;
+        const MAX_GAME_ZOOM = 1.8;
+        const TAP_MOVE_LIMIT = 12;
+        const activeTouchPointers = new Map();
+        const pinchPointerIds = new Set();
+        let gameZoom = 1.0;
+        let pinchStartDistance = 0;
+        let pinchStartZoom = 1.0;
+
+        function setGameZoom(scale) {
+            gameZoom = Math.min(MAX_GAME_ZOOM, Math.max(MIN_GAME_ZOOM, scale));
+            canvas.style.setProperty("--game-zoom", String(gameZoom));
+        }
+
+        function firstTwoTouchPointers() {
+            return Array.from(activeTouchPointers.values()).slice(0, 2);
+        }
+
+        function touchPointerDistance() {
+            const [first, second] = firstTwoTouchPointers();
+            return first && second
+                ? Math.hypot(second.x - first.x, second.y - first.y)
+                : 0;
+        }
+
+        function consumeTouchPointer(event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+
+        function beginTouchPointer(event) {
+            if (event.pointerType !== "touch") return;
+
+            // Preserve the real user gesture used by iOS to unlock game audio.
+            unlockNylahAudioFromPlay(event);
+            activeTouchPointers.set(event.pointerId, {
+                id: event.pointerId,
+                x: event.clientX,
+                y: event.clientY,
+                startX: event.clientX,
+                startY: event.clientY
+            });
+            try { canvas.setPointerCapture(event.pointerId); } catch (_) {}
+
+            if (activeTouchPointers.size >= 2) {
+                for (const pointerId of activeTouchPointers.keys()) {
+                    pinchPointerIds.add(pointerId);
+                }
+                pinchStartDistance = touchPointerDistance();
+                pinchStartZoom = gameZoom;
+            }
+            consumeTouchPointer(event);
+        }
+
+        function moveTouchPointer(event) {
+            if (event.pointerType !== "touch" ||
+                    !activeTouchPointers.has(event.pointerId)) return;
+
+            const pointer = activeTouchPointers.get(event.pointerId);
+            pointer.x = event.clientX;
+            pointer.y = event.clientY;
+
+            if (activeTouchPointers.size >= 2 && pinchStartDistance > 0) {
+                const currentDistance = touchPointerDistance();
+                setGameZoom(pinchStartZoom * currentDistance / pinchStartDistance);
+            }
+            consumeTouchPointer(event);
+        }
+
+        function replaySingleTouchAsTap(pointer, event) {
+            const moved = Math.hypot(pointer.x - pointer.startX, pointer.y - pointer.startY);
+            if (moved > TAP_MOVE_LIMIT) return;
+
+            const mouseOptions = {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: event.clientX,
+                clientY: event.clientY,
+                screenX: event.screenX,
+                screenY: event.screenY,
+                button: 0,
+                buttons: 1
+            };
+            canvas.dispatchEvent(new MouseEvent("mousedown", mouseOptions));
+            canvas.dispatchEvent(new MouseEvent("mouseup", { ...mouseOptions, buttons: 0 }));
+            canvas.dispatchEvent(new MouseEvent("click", { ...mouseOptions, buttons: 0 }));
+        }
+
+        function endTouchPointer(event, cancelled = false) {
+            if (event.pointerType !== "touch" ||
+                    !activeTouchPointers.has(event.pointerId)) return;
+
+            const pointer = activeTouchPointers.get(event.pointerId);
+            pointer.x = event.clientX;
+            pointer.y = event.clientY;
+            const belongedToPinch = pinchPointerIds.has(event.pointerId);
+            activeTouchPointers.delete(event.pointerId);
+            try { canvas.releasePointerCapture(event.pointerId); } catch (_) {}
+
+            if (!cancelled && !belongedToPinch) {
+                replaySingleTouchAsTap(pointer, event);
+            }
+            if (activeTouchPointers.size < 2) {
+                pinchStartDistance = 0;
+            }
+            if (activeTouchPointers.size === 0) {
+                pinchPointerIds.clear();
+            }
+            consumeTouchPointer(event);
+        }
+
+        // Capture phase runs before Emscripten/SDL listeners added to the canvas.
+        canvas.addEventListener("pointerdown", beginTouchPointer, { capture: true, passive: false });
+        canvas.addEventListener("pointermove", moveTouchPointer, { capture: true, passive: false });
+        canvas.addEventListener("pointerup", (event) => endTouchPointer(event), { capture: true, passive: false });
+        canvas.addEventListener("pointercancel", (event) => endTouchPointer(event, true), { capture: true, passive: false });
+
+        // Safari can also expose legacy Touch Events alongside Pointer Events.
+        // Suppress that duplicate path only on the game interaction surface.
+        for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"]) {
+            canvas.addEventListener(type, (event) => {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }, { capture: true, passive: false });
+        }
+
+        setGameZoom(1.0);
     }
 
     function custom_prerun(){
