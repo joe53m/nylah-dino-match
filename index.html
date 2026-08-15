@@ -56,24 +56,6 @@ async def custom_site():
 
     main = appdir / "assets" / "main.py"
 
-    # TODO: test for window.webkitAudioContext and block aio loop until gesture if accessing media manager play
-    # before a gesture is recorded ( touch or click )
-
-    # test/wait user media interaction
-    if not platform.window.MM.UME:
-
-        # now that apk is mounted we have access to font cache
-        # but we need to fill __file__ that is not yet set
-        __import__(__name__).__file__ = main
-
-        # keep Pygbag's media-unlock step, presented through the themed loader
-        msg = "Ready to start! Please click/touch page"
-        platform.document.getElementById("loading-text").innerText = msg
-        print("\n"*4, f"    * Waiting for media user engagement. {msg} *" , "\n"*4)
-
-        while not platform.window.MM.UME:
-            await asyncio.sleep(.1)
-
     # start async top level machinery if not started and add a console in any case if requested.
     await TopLevel_async_handler.start_toplevel(platform.shell, console=window.python.config.debug)
 
@@ -148,7 +130,7 @@ config = {
     user_canvas : 0,
     user_canvas_managed : 0,
     gui_divider : 2,
-    ume_block : 1,
+    ume_block : 0,
     can_close : 0,
     archive : "nylah_dino_web",
     gui_debug : 2,
@@ -175,8 +157,9 @@ config = {
     <style>
         html,
         body {
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
             margin: 0;
             padding: 0;
             overflow: hidden;
@@ -230,25 +213,58 @@ config = {
         div.emscripten_border { border: 1px solid black; }
         div.thick_border { border: 4px solid black; }
 
-        /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
-        /* average size of droid screen 470dp x 320dp  */
-        canvas.emscripten {
-            border: 0;
-            background-color: transparent;
-            width: min(100vw, calc(100vh * 5 / 3));
-            height: min(100vh, calc(100vw * 3 / 5));
-            width: min(100vw, calc(100dvh * 5 / 3));
-            height: min(100dvh, calc(100vw * 3 / 5));
-            aspect-ratio: 5 / 3;
-            padding: 0;
-            margin: auto;
+        #game-stage {
+            position: fixed;
+            top: env(safe-area-inset-top, 0px);
+            right: env(safe-area-inset-right, 0px);
+            bottom: env(safe-area-inset-bottom, 0px);
+            left: env(safe-area-inset-left, 0px);
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            container-type: size;
+        }
 
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            right: 0;
+        /* No canvas border or padding: its CSS box maps directly to 800x480. */
+        #canvas {
+            display: block;
+            border: 0 !important;
+            background-color: transparent;
+            /* Fallback, then safe-area-aware container sizing on modern iOS. */
+            width: min(100vw, 166.6667dvh) !important;
+            height: min(100dvh, 60vw) !important;
+            width: min(100cqw, 166.6667cqh) !important;
+            height: min(100cqh, 60cqw) !important;
+            aspect-ratio: 5 / 3;
+            padding: 0 !important;
+            margin: 0 !important;
+            image-rendering: auto;
             visibility: hidden;
+        }
+
+        #rotate-message {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            box-sizing: border-box;
+            padding:
+                max(24px, env(safe-area-inset-top, 0px))
+                max(24px, env(safe-area-inset-right, 0px))
+                max(24px, env(safe-area-inset-bottom, 0px))
+                max(24px, env(safe-area-inset-left, 0px));
+            align-items: center;
+            justify-content: center;
+            color: #60356f;
+            background: radial-gradient(circle at 50% 42%, #fff4fb 0%, #f3cce8 52%, #bf89c4 100%);
+            font: 700 clamp(24px, 7vw, 42px)/1.2 Arial, sans-serif;
+            text-align: center;
+            text-shadow: 0 2px 0 rgba(255, 255, 255, 0.8);
+        }
+
+        @media (orientation: portrait) and (pointer: coarse) {
+            #rotate-message { display: flex; }
+            #game-stage { visibility: hidden; }
         }
 
         body {
@@ -304,6 +320,8 @@ config = {
 
 <body>
 
+    <div id="rotate-message" role="status">Turn your phone sideways to play</div>
+
     <div id="loading_screen" role="status" aria-live="polite">
         <img id="loading-dino" src="dino_purple.png" alt="Cute purple baby dinosaur">
         <div id="loading-text">Loading Nylah's Dino Match...</div>
@@ -319,6 +337,7 @@ config = {
 
 
 
+    <div id="game-stage">
     <canvas class="emscripten" id="canvas"
 width="1px"
 height="1px"
@@ -330,6 +349,7 @@ width="800px"
 height="480px"
     oncontextmenu="event.preventDefault()" tabindex=1 hidden>
     </canvas>
+    </div>
 
     <div id="infobox">Loading, please wait ...</div>
 
@@ -408,6 +428,21 @@ frameborder="1"
         box.hidden =  debug_hidden
 
         infobox.style.display = "none"
+
+        // Resume Web Audio from the same deliberate canvas tap Pygame receives.
+        // There is intentionally no separate launcher or audio-unlock control.
+        canvas.addEventListener("pointerdown", () => {
+            const contexts = [
+                globalThis.Module?.SDL2?.audioContext,
+                globalThis.Module?.audioContext,
+                globalThis.SDL2?.audioContext
+            ];
+            for (const context of contexts) {
+                if (context?.state === "suspended") {
+                    context.resume().catch(() => {});
+                }
+            }
+        }, { passive: true });
     }
 
     function custom_prerun(){
