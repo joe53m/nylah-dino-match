@@ -304,6 +304,7 @@ config = {
 
 
     <div id="game-stage">
+    <audio id="nylah-bg-music" src="background_music.mp3" loop preload="auto" hidden></audio>
     <canvas class="emscripten" id="canvas"
 width="1px"
 height="1px"
@@ -430,9 +431,57 @@ frameborder="1"
         globalThis.sizeNylahGameCanvas = sizeGameCanvas;
         sizeGameCanvas();
 
-        // Resume Web Audio only from a pointer that maps to the existing PLAY
-        // button. getBoundingClientRect() keeps the hit test correct after CSS scaling.
+        // Start the independent HTML5 music directly from the existing PLAY
+        // gesture. getBoundingClientRect() keeps the hit test correct after scaling.
         let playAudioGestureReceived = false;
+
+        function getNylahBackgroundMusic() {
+            const audio = document.getElementById("nylah-bg-music");
+            console.log("[Nylah audio] HTML5 audio element found", Boolean(audio));
+            return audio;
+        }
+
+        function logNylahBackgroundMusicState(audio, label) {
+            console.log(`[Nylah audio] ${label}`, {
+                currentTime: audio.currentTime,
+                paused: audio.paused,
+                volume: audio.volume
+            });
+        }
+
+        function playNylahBackgroundMusic(volume = 0.25) {
+            const audio = getNylahBackgroundMusic();
+            if (!audio) return;
+            audio.volume = volume;
+            console.log("[Nylah audio] audio.play() attempted");
+            logNylahBackgroundMusicState(audio, "state at play attempt");
+            try {
+                const playResult = audio.play();
+                if (playResult && typeof playResult.then === "function") {
+                    playResult.then(
+                        () => {
+                            console.log("[Nylah audio] play() resolved");
+                            logNylahBackgroundMusicState(audio, "state after play resolved");
+                        },
+                        (error) => {
+                            console.error("[Nylah audio] play() rejected", error?.stack || error);
+                            logNylahBackgroundMusicState(audio, "state after play rejected");
+                        }
+                    );
+                }
+            } catch (error) {
+                console.error("[Nylah audio] play() rejected", error?.stack || error);
+                logNylahBackgroundMusicState(audio, "state after play exception");
+            }
+        }
+
+        globalThis.nylahStartBackgroundMusic = playNylahBackgroundMusic;
+        globalThis.nylahPauseBackgroundMusic = () => {
+            const audio = getNylahBackgroundMusic();
+            if (!audio) return;
+            audio.pause();
+            logNylahBackgroundMusicState(audio, "state after pause");
+        };
 
         function unlockNylahAudioFromPlay(event) {
             if (playAudioGestureReceived) return;
@@ -452,6 +501,11 @@ frameborder="1"
                 emscriptenModule: typeof globalThis.Module !== "undefined",
                 pygameWeb: typeof globalThis.python !== "undefined"
             });
+
+            // Keep this call synchronous in the native PLAY event handler so
+            // iPhone Safari recognizes it as part of the user gesture.
+            playAudioGestureReceived = true;
+            playNylahBackgroundMusic(0.25);
 
             // SDL2.audioContext is the context owned by pygame-web/Pygbag's
             // Emscripten SDL mixer. Keep fallbacks for alternate runtime builds.
@@ -479,7 +533,6 @@ frameborder="1"
                 console.error("[Nylah audio] audio failure exception: SDL WebAudio AudioContext was not exposed during the PLAY gesture");
                 return;
             }
-            playAudioGestureReceived = true;
             for (const [path, context] of availableContexts) {
                 console.log("[Nylah audio] detected AudioContext object/path", path, context);
                 console.log("[Nylah audio] AudioContext state before resume", context.state);
