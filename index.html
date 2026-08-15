@@ -214,18 +214,23 @@ config = {
         #game-stage {
             position: fixed;
             inset: 0;
-            display: grid;
-            place-items: center;
+            margin: 0;
+            padding: 0;
             overflow: hidden;
         }
 
         /* No canvas border or padding: its CSS box maps directly to 800x480. */
         #canvas {
-            display: block;
+            position: fixed !important;
+            left: 50% !important;
+            top: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
             border: 0 !important;
             background-color: transparent;
-            padding: 0 !important;
-            margin: 0 !important;
+            float: none !important;
             image-rendering: auto;
             visibility: hidden;
         }
@@ -422,10 +427,6 @@ frameborder="1"
         }
 
         window.addEventListener("resize", sizeGameCanvas);
-        window.addEventListener("orientationchange", () => {
-            sizeGameCanvas();
-            requestAnimationFrame(sizeGameCanvas);
-        });
         globalThis.sizeNylahGameCanvas = sizeGameCanvas;
         sizeGameCanvas();
 
@@ -440,18 +441,20 @@ frameborder="1"
             if (gameX < PLAY_RECT.left || gameX > PLAY_RECT.right ||
                     gameY < PLAY_RECT.top || gameY > PLAY_RECT.bottom) return;
 
-            playAudioGestureReceived = true;
             console.log("[Nylah audio] PLAY tap received", { gameX, gameY, canvasRect: rect });
             console.log("[Nylah audio] music play attempted via PLAY audio unlock");
             const contexts = [
                 globalThis.Module?.SDL2?.audioContext,
                 globalThis.Module?.audioContext,
-                globalThis.SDL2?.audioContext
+                globalThis.SDL2?.audioContext,
+                globalThis.audioContext
             ];
             const availableContexts = [...new Set(contexts.filter(Boolean))];
             if (availableContexts.length === 0) {
-                console.warn("[Nylah audio] mixer initialized: Web Audio context not exposed; continuing with pygame mixer unlock");
+                console.error("[Nylah audio] audio failure exception: SDL WebAudio AudioContext was not exposed during the PLAY gesture");
+                return;
             }
+            playAudioGestureReceived = true;
             for (const context of availableContexts) {
                 console.log("[Nylah audio] mixer initialized", { state: context.state });
                 if (context.state === "suspended") {
