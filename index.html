@@ -442,8 +442,10 @@ frameborder="1"
                     gameY < PLAY_RECT.top || gameY > PLAY_RECT.bottom) return;
 
             console.log("[Nylah audio] PLAY tap received", { gameX, gameY, canvasRect: rect });
-            console.log("[Nylah audio] music play attempted via PLAY audio unlock");
             const contexts = [
+                // Pygbag's Emscripten SDL mixer owns this context. Its generated
+                // runtime also passes this exact object to autoResumeAudioContext().
+                typeof SDL !== "undefined" ? SDL.audioContext : null,
                 globalThis.Module?.SDL2?.audioContext,
                 globalThis.Module?.audioContext,
                 globalThis.SDL2?.audioContext,
@@ -456,11 +458,15 @@ frameborder="1"
             }
             playAudioGestureReceived = true;
             for (const context of availableContexts) {
-                console.log("[Nylah audio] mixer initialized", { state: context.state });
-                if (context.state === "suspended") {
-                    context.resume()
-                        .then(() => console.log("[Nylah audio] mixer initialized and resumed", { state: context.state }))
-                        .catch((error) => console.error("[Nylah audio] audio failure exception", error));
+                console.log("[Nylah audio] audio context state before resume", context.state);
+                console.log("[Nylah audio] background music play attempted");
+                try {
+                    Promise.resolve(context.resume())
+                        .catch((error) => console.error("[Nylah audio] audio failure exception", error))
+                        .finally(() => console.log("[Nylah audio] audio context state after resume", context.state));
+                } catch (error) {
+                    console.error("[Nylah audio] audio failure exception", error);
+                    console.log("[Nylah audio] audio context state after resume", context.state);
                 }
             }
         }, { passive: true });
