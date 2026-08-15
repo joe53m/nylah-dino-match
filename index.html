@@ -6,7 +6,7 @@ Loading nylah_dino_web from nylah_dino_web.apk
     Template Version : 0.9.3
     Python  : 3.12
     CDN URL : https://pygame-web.github.io/cdn/0.9.3/
-    Screen  : 1280x720
+    Screen  : 800x480
     Title   : nylah_dino_web
     Folder  : nylah_dino_web
     Authors : pgw
@@ -139,8 +139,8 @@ config = {
     autorun : 0,
     PYBUILD : "3.12",
     fb_ar   :  1.6666666667,
-    fb_width : "1280",
-    fb_height : "720"
+    fb_width : "800",
+    fb_height : "480"
 }
 
 </script>
@@ -325,8 +325,8 @@ height="1px"
     </canvas>
 
     <canvas class="emscripten" id="canvas3d"
-width="1280px"
-height="720px"
+width="800px"
+height="480px"
     oncontextmenu="event.preventDefault()" tabindex=1 hidden>
     </canvas>
     </div>
@@ -603,10 +603,12 @@ frameborder="1"
         }
 
         function touchPointerDistance() {
-            const [first, second] = firstTwoTouchPointers();
-            return first && second
-                ? Math.hypot(second.x - first.x, second.y - first.y)
-                : 0;
+            const [p1, p2] = firstTwoTouchPointers();
+            if (!p1 || !p2) return 0;
+
+            const dx = p2.clientX - p1.clientX;
+            const dy = p2.clientY - p1.clientY;
+            return Math.hypot(dx, dy);
         }
 
         function consumeTouchPointer(event) {
@@ -621,8 +623,8 @@ frameborder="1"
             unlockNylahAudioFromPlay(event);
             activeTouchPointers.set(event.pointerId, {
                 id: event.pointerId,
-                x: event.clientX,
-                y: event.clientY,
+                clientX: event.clientX,
+                clientY: event.clientY,
                 startX: event.clientX,
                 startY: event.clientY
             });
@@ -643,18 +645,23 @@ frameborder="1"
                     !activeTouchPointers.has(event.pointerId)) return;
 
             const pointer = activeTouchPointers.get(event.pointerId);
-            pointer.x = event.clientX;
-            pointer.y = event.clientY;
+            pointer.clientX = event.clientX;
+            pointer.clientY = event.clientY;
 
             if (activeTouchPointers.size >= 2 && pinchStartDistance > 0) {
                 const currentDistance = touchPointerDistance();
-                setGameZoom(pinchStartZoom * currentDistance / pinchStartDistance);
+                const ratio = currentDistance / pinchStartDistance;
+                const newScale = pinchStartZoom * ratio;
+                setGameZoom(newScale);
             }
             consumeTouchPointer(event);
         }
 
         function replaySingleTouchAsTap(pointer, event) {
-            const moved = Math.hypot(pointer.x - pointer.startX, pointer.y - pointer.startY);
+            const moved = Math.hypot(
+                pointer.clientX - pointer.startX,
+                pointer.clientY - pointer.startY
+            );
             if (moved > TAP_MOVE_LIMIT) return;
 
             const mouseOptions = {
@@ -678,8 +685,8 @@ frameborder="1"
                     !activeTouchPointers.has(event.pointerId)) return;
 
             const pointer = activeTouchPointers.get(event.pointerId);
-            pointer.x = event.clientX;
-            pointer.y = event.clientY;
+            pointer.clientX = event.clientX;
+            pointer.clientY = event.clientY;
             const belongedToPinch = pinchPointerIds.has(event.pointerId);
             activeTouchPointers.delete(event.pointerId);
             try { canvas.releasePointerCapture(event.pointerId); } catch (_) {}
