@@ -496,6 +496,66 @@ frameborder="1"
             logNylahBackgroundMusicState(audio, "state after pause");
         };
 
+        // Dinosaur names use HTML5 audio on the web, independently of SDL's
+        // mixer. Build Blob URLs from the already-unpacked WAV assets once at
+        // PLAY time, so no voice file is fetched or decoded during a match.
+        const nylahDinosaurVoiceFiles = {
+            REX: "trex.wav",
+            TRI: "triceratops.wav",
+            STEG: "stegosaurus.wav",
+            BRONTO: "brontosaurus.wav",
+            RAPTOR: "raptor.wav",
+            ANKY: "ankylosaurus.wav"
+        };
+        const nylahDinosaurVoices = new Map();
+        let nylahActiveDinosaurVoice = null;
+
+        globalThis.nylahPreloadDinosaurVoices = () => {
+            if (nylahDinosaurVoices.size) return;
+            const voiceRoot = `/data/data/${config.archive}/assets/assets/audio`;
+            for (const [name, filename] of Object.entries(nylahDinosaurVoiceFiles)) {
+                try {
+                    const bytes = FS.readFile(`${voiceRoot}/${filename}`);
+                    const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+                    const voice = new Audio(url);
+                    voice.preload = "auto";
+                    voice.load();
+                    nylahDinosaurVoices.set(name, voice);
+                } catch (error) {
+                    console.error(`[Nylah audio] failed to preload dinosaur ${name}`, error);
+                }
+            }
+        };
+
+        globalThis.nylahPlayDinosaurVoice = (name) => {
+            const voice = nylahDinosaurVoices.get(name);
+            if (!voice) return;
+
+            // Each successful match calls this once. Resetting here also makes
+            // replaying the same dinosaur in a new game deterministic.
+            if (nylahActiveDinosaurVoice && nylahActiveDinosaurVoice !== voice) {
+                nylahActiveDinosaurVoice.pause();
+            }
+            nylahActiveDinosaurVoice = voice;
+            voice.currentTime = 0;
+
+            const music = getNylahBackgroundMusic();
+            const normalMusicVolume = music ? music.volume : 0.25;
+            if (music && !music.paused) music.volume = Math.min(normalMusicVolume, 0.08);
+
+            let restored = false;
+            const restoreMusic = () => {
+                if (restored) return;
+                restored = true;
+                if (music) music.volume = normalMusicVolume;
+                if (nylahActiveDinosaurVoice === voice) nylahActiveDinosaurVoice = null;
+            };
+            voice.addEventListener("ended", restoreMusic, { once: true });
+            voice.addEventListener("error", restoreMusic, { once: true });
+            const result = voice.play();
+            if (result && typeof result.catch === "function") result.catch(restoreMusic);
+        };
+
         function unlockNylahAudioFromPlay(event) {
             if (playAudioGestureReceived) return;
             const rect = canvas.getBoundingClientRect();
@@ -519,6 +579,7 @@ frameborder="1"
             // iPhone Safari recognizes it as part of the user gesture.
             playAudioGestureReceived = true;
             playNylahBackgroundMusic(0.25);
+            globalThis.nylahPreloadDinosaurVoices();
 
             // SDL2.audioContext is the context owned by pygame-web/Pygbag's
             // Emscripten SDL mixer. Keep fallbacks for alternate runtime builds.
