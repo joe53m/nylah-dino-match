@@ -582,7 +582,7 @@ frameborder="1"
 
         // Keep Safari's viewport fixed while providing application-level zoom.
         // Raw touch input is consumed here. A gesture that stays single-touch is
-        // replayed as one mouse tap for SDL/Pygame; pinch pointers are never
+        // replayed as one touch pointer tap for SDL/Pygame; pinch pointers are never
         // forwarded as gameplay input.
         const MIN_GAME_ZOOM = 1.0;
         const MAX_GAME_ZOOM = 1.8;
@@ -617,6 +617,7 @@ frameborder="1"
         }
 
         function beginTouchPointer(event) {
+            if (event.nylahSingleTouchReplay) return;
             if (event.pointerType !== "touch") return;
 
             // Preserve the real user gesture used by iOS to unlock game audio.
@@ -628,6 +629,7 @@ frameborder="1"
                 startX: event.clientX,
                 startY: event.clientY
             });
+            console.log("[Nylah input] single pointer down", event.pointerId);
             try { canvas.setPointerCapture(event.pointerId); } catch (_) {}
 
             if (activeTouchPointers.size >= 2) {
@@ -636,11 +638,13 @@ frameborder="1"
                 }
                 pinchStartDistance = touchPointerDistance();
                 pinchStartZoom = gameZoom;
+                console.log("[Nylah input] pinch mode entered");
             }
             consumeTouchPointer(event);
         }
 
         function moveTouchPointer(event) {
+            if (event.nylahSingleTouchReplay) return;
             if (event.pointerType !== "touch" ||
                     !activeTouchPointers.has(event.pointerId)) return;
 
@@ -664,7 +668,7 @@ frameborder="1"
             );
             if (moved > TAP_MOVE_LIMIT) return;
 
-            const mouseOptions = {
+            const pointerOptions = {
                 bubbles: true,
                 cancelable: true,
                 view: window,
@@ -672,15 +676,36 @@ frameborder="1"
                 clientY: event.clientY,
                 screenX: event.screenX,
                 screenY: event.screenY,
+                pointerId: pointer.id,
+                pointerType: "touch",
+                isPrimary: true,
+                pressure: 0.5,
                 button: 0,
                 buttons: 1
             };
-            canvas.dispatchEvent(new MouseEvent("mousedown", mouseOptions));
-            canvas.dispatchEvent(new MouseEvent("mouseup", { ...mouseOptions, buttons: 0 }));
-            canvas.dispatchEvent(new MouseEvent("click", { ...mouseOptions, buttons: 0 }));
+            const down = new PointerEvent("pointerdown", pointerOptions);
+            const up = new PointerEvent("pointerup", {
+                ...pointerOptions,
+                pressure: 0,
+                buttons: 0
+            });
+            Object.defineProperty(down, "nylahSingleTouchReplay", { value: true });
+            Object.defineProperty(up, "nylahSingleTouchReplay", { value: true });
+            canvas.dispatchEvent(down);
+            canvas.dispatchEvent(up);
+            console.log("[Nylah input] single tap forwarded", pointer.id);
+
+            const rect = canvas.getBoundingClientRect();
+            const gameX = (event.clientX - rect.left) * GAME_WIDTH / rect.width;
+            const gameY = (event.clientY - rect.top) * GAME_HEIGHT / rect.height;
+            if (gameX >= PLAY_RECT.left && gameX <= PLAY_RECT.right &&
+                    gameY >= PLAY_RECT.top && gameY <= PLAY_RECT.bottom) {
+                console.log("[Nylah input] PLAY tap forwarded");
+            }
         }
 
         function endTouchPointer(event, cancelled = false) {
+            if (event.nylahSingleTouchReplay) return;
             if (event.pointerType !== "touch" ||
                     !activeTouchPointers.has(event.pointerId)) return;
 
