@@ -6,7 +6,7 @@ Loading nylah_dino_web from nylah_dino_web.apk
     Template Version : 0.9.3
     Python  : 3.12
     CDN URL : https://pygame-web.github.io/cdn/0.9.3/
-    Screen  : 800x480
+    Screen  : 1280x720
     Title   : nylah_dino_web
     Folder  : nylah_dino_web
     Authors : pgw
@@ -139,8 +139,8 @@ config = {
     autorun : 0,
     PYBUILD : "3.12",
     fb_ar   :  1.6666666667,
-    fb_width : "800",
-    fb_height : "480"
+    fb_width : "1280",
+    fb_height : "720"
 }
 
 </script>
@@ -318,6 +318,12 @@ config = {
 
     <div id="game-stage">
     <audio id="nylah-bg-music" src="background_music.mp3" loop preload="auto" hidden></audio>
+    <audio id="dino-voice-trex" src="assets/audio/trex.wav" preload="auto" hidden></audio>
+    <audio id="dino-voice-triceratops" src="assets/audio/triceratops.wav" preload="auto" hidden></audio>
+    <audio id="dino-voice-stegosaurus" src="assets/audio/stegosaurus.wav" preload="auto" hidden></audio>
+    <audio id="dino-voice-brontosaurus" src="assets/audio/brontosaurus.wav" preload="auto" hidden></audio>
+    <audio id="dino-voice-raptor" src="assets/audio/raptor.wav" preload="auto" hidden></audio>
+    <audio id="dino-voice-ankylosaurus" src="assets/audio/ankylosaurus.wav" preload="auto" hidden></audio>
     <canvas class="emscripten" id="canvas"
 width="1px"
 height="1px"
@@ -325,8 +331,8 @@ height="1px"
     </canvas>
 
     <canvas class="emscripten" id="canvas3d"
-width="800px"
-height="480px"
+width="1280px"
+height="720px"
     oncontextmenu="event.preventDefault()" tabindex=1 hidden>
     </canvas>
     </div>
@@ -496,66 +502,28 @@ frameborder="1"
             logNylahBackgroundMusicState(audio, "state after pause");
         };
 
-        // Dinosaur names use HTML5 audio on the web, independently of SDL's
-        // mixer. Create all six Audio objects during page initialization, then
-        // attach Blob URLs from the unpacked WAV assets once at PLAY time.
-        const nylahDinosaurVoiceFiles = {
-            REX: "trex.wav",
-            TRI: "triceratops.wav",
-            STEG: "stegosaurus.wav",
-            BRONTO: "brontosaurus.wav",
-            RAPTOR: "raptor.wav",
-            ANKY: "ankylosaurus.wav"
+        // Dinosaur names use native elements and never pass through SDL_mixer.
+        const nylahDinosaurVoiceElements = {
+            REX: "dino-voice-trex",
+            TRI: "dino-voice-triceratops",
+            STEG: "dino-voice-stegosaurus",
+            BRONTO: "dino-voice-brontosaurus",
+            RAPTOR: "dino-voice-raptor",
+            ANKY: "dino-voice-ankylosaurus"
         };
-        const nylahDinosaurDisplayNames = {
-            REX: "T-Rex",
-            TRI: "Triceratops",
-            STEG: "Stegosaurus",
-            BRONTO: "Brontosaurus",
-            RAPTOR: "Raptor",
-            ANKY: "Ankylosaurus"
-        };
-        const nylahDinosaurVoices = new Map(
-            Object.keys(nylahDinosaurVoiceFiles).map((name) => {
-                const voice = new Audio();
-                voice.preload = "auto";
-                voice.loop = false;
-                return [name, voice];
-            })
-        );
         let nylahActiveDinosaurVoice = null;
         let nylahRestoreDuckedMusic = null;
-        let nylahDinosaurVoicesLoaded = false;
         let nylahDinosaurVoiceEnabled = true;
 
-        globalThis.nylahPreloadDinosaurVoices = () => {
-            if (nylahDinosaurVoicesLoaded) return;
-            const voiceRoot = `/data/data/${config.archive}/assets/assets/audio`;
-            for (const [name, filename] of Object.entries(nylahDinosaurVoiceFiles)) {
-                try {
-                    const bytes = FS.readFile(`${voiceRoot}/${filename}`);
-                    const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
-                    const voice = nylahDinosaurVoices.get(name);
-                    voice.src = url;
-                    voice.load();
-                    console.log(`[Nylah audio] preloaded ${nylahDinosaurDisplayNames[name]}: ${filename}`);
-                } catch (error) {
-                    console.error(`[Nylah audio] failed to preload dinosaur ${name}`, error);
-                }
-            }
-            nylahDinosaurVoicesLoaded = true;
-        };
+        window.playDinoVoice = function(name) {
+            console.log(`[Nylah audio] playDinoVoice called: ${name}`);
+            if (!nylahDinosaurVoiceEnabled) return;
+            const elementId = nylahDinosaurVoiceElements[name];
+            const voice = elementId ? document.getElementById(elementId) : null;
+            console.log(`[Nylah audio] matching audio element found: ${voice ? "yes" : "no"}`);
+            if (!voice) return;
+            console.log(`[Nylah audio] audio src: ${voice.currentSrc || voice.src}`);
 
-        globalThis.nylahPlayDinosaurVoice = (name) => {
-            const voice = nylahDinosaurVoices.get(name);
-            const filename = nylahDinosaurVoiceFiles[name];
-            const displayName = nylahDinosaurDisplayNames[name] || name;
-            console.log(`[Nylah audio] successful match dinosaur: ${displayName}`);
-            console.log(`[Nylah audio] selected educational audio file: ${filename}`);
-            if (!nylahDinosaurVoiceEnabled || !voice || !voice.src) return;
-
-            // Each successful match calls this once. Resetting here also makes
-            // replaying the same dinosaur in a new game deterministic.
             if (nylahActiveDinosaurVoice && nylahActiveDinosaurVoice !== voice) {
                 nylahActiveDinosaurVoice.pause();
                 if (nylahRestoreDuckedMusic) nylahRestoreDuckedMusic();
@@ -578,24 +546,23 @@ frameborder="1"
             };
             nylahRestoreDuckedMusic = restoreMusic;
             voice.onended = () => {
-                console.log(`[Nylah audio] voice ended: ${displayName}`);
+                console.log(`[Nylah audio] ended event fired: ${name}`);
                 restoreMusic();
             };
             voice.onerror = restoreMusic;
-            console.log(`[Nylah audio] HTML5 voice play() attempted: ${displayName}`);
             try {
                 const result = voice.play();
                 if (result && typeof result.then === "function") {
                     result.then(
-                        () => console.log(`[Nylah audio] voice play() resolved: ${displayName}`),
+                        () => console.log(`[Nylah audio] play() resolved: ${name}`),
                         (error) => {
-                            console.error(`[Nylah audio] voice play() rejected: ${displayName}`, error?.stack || error);
+                            console.error(`[Nylah audio] play() rejected: ${name}`, error?.stack || error);
                             restoreMusic();
                         }
                     );
                 }
             } catch (error) {
-                console.error(`[Nylah audio] voice play() rejected: ${displayName}`, error?.stack || error);
+                console.error(`[Nylah audio] play() rejected: ${name}`, error?.stack || error);
                 restoreMusic();
             }
         };
@@ -632,7 +599,6 @@ frameborder="1"
             // iPhone Safari recognizes it as part of the user gesture.
             playAudioGestureReceived = true;
             playNylahBackgroundMusic(0.25);
-            globalThis.nylahPreloadDinosaurVoices();
 
             // SDL2.audioContext is the context owned by pygame-web/Pygbag's
             // Emscripten SDL mixer. Keep fallbacks for alternate runtime builds.
