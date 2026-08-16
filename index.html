@@ -497,8 +497,8 @@ frameborder="1"
         };
 
         // Dinosaur names use HTML5 audio on the web, independently of SDL's
-        // mixer. Build Blob URLs from the already-unpacked WAV assets once at
-        // PLAY time, so no voice file is fetched or decoded during a match.
+        // mixer. Create all six Audio objects during page initialization, then
+        // attach Blob URLs from the unpacked WAV assets once at PLAY time.
         const nylahDinosaurVoiceFiles = {
             REX: "trex.wav",
             TRI: "triceratops.wav",
@@ -507,34 +507,58 @@ frameborder="1"
             RAPTOR: "raptor.wav",
             ANKY: "ankylosaurus.wav"
         };
-        const nylahDinosaurVoices = new Map();
+        const nylahDinosaurDisplayNames = {
+            REX: "T-Rex",
+            TRI: "Triceratops",
+            STEG: "Stegosaurus",
+            BRONTO: "Brontosaurus",
+            RAPTOR: "Raptor",
+            ANKY: "Ankylosaurus"
+        };
+        const nylahDinosaurVoices = new Map(
+            Object.keys(nylahDinosaurVoiceFiles).map((name) => {
+                const voice = new Audio();
+                voice.preload = "auto";
+                voice.loop = false;
+                return [name, voice];
+            })
+        );
         let nylahActiveDinosaurVoice = null;
+        let nylahRestoreDuckedMusic = null;
+        let nylahDinosaurVoicesLoaded = false;
+        let nylahDinosaurVoiceEnabled = true;
 
         globalThis.nylahPreloadDinosaurVoices = () => {
-            if (nylahDinosaurVoices.size) return;
+            if (nylahDinosaurVoicesLoaded) return;
             const voiceRoot = `/data/data/${config.archive}/assets/assets/audio`;
             for (const [name, filename] of Object.entries(nylahDinosaurVoiceFiles)) {
                 try {
                     const bytes = FS.readFile(`${voiceRoot}/${filename}`);
                     const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
-                    const voice = new Audio(url);
-                    voice.preload = "auto";
+                    const voice = nylahDinosaurVoices.get(name);
+                    voice.src = url;
                     voice.load();
-                    nylahDinosaurVoices.set(name, voice);
+                    console.log(`[Nylah audio] preloaded ${nylahDinosaurDisplayNames[name]}: ${filename}`);
                 } catch (error) {
                     console.error(`[Nylah audio] failed to preload dinosaur ${name}`, error);
                 }
             }
+            nylahDinosaurVoicesLoaded = true;
         };
 
         globalThis.nylahPlayDinosaurVoice = (name) => {
             const voice = nylahDinosaurVoices.get(name);
-            if (!voice) return;
+            const filename = nylahDinosaurVoiceFiles[name];
+            const displayName = nylahDinosaurDisplayNames[name] || name;
+            console.log(`[Nylah audio] successful match dinosaur: ${displayName}`);
+            console.log(`[Nylah audio] selected educational audio file: ${filename}`);
+            if (!nylahDinosaurVoiceEnabled || !voice || !voice.src) return;
 
             // Each successful match calls this once. Resetting here also makes
             // replaying the same dinosaur in a new game deterministic.
             if (nylahActiveDinosaurVoice && nylahActiveDinosaurVoice !== voice) {
                 nylahActiveDinosaurVoice.pause();
+                if (nylahRestoreDuckedMusic) nylahRestoreDuckedMusic();
             }
             nylahActiveDinosaurVoice = voice;
             voice.currentTime = 0;
@@ -549,11 +573,40 @@ frameborder="1"
                 restored = true;
                 if (music) music.volume = normalMusicVolume;
                 if (nylahActiveDinosaurVoice === voice) nylahActiveDinosaurVoice = null;
+                if (nylahRestoreDuckedMusic === restoreMusic) nylahRestoreDuckedMusic = null;
+                console.log(`[Nylah audio] background music volume restored: ${normalMusicVolume}`);
             };
-            voice.addEventListener("ended", restoreMusic, { once: true });
-            voice.addEventListener("error", restoreMusic, { once: true });
-            const result = voice.play();
-            if (result && typeof result.catch === "function") result.catch(restoreMusic);
+            nylahRestoreDuckedMusic = restoreMusic;
+            voice.onended = () => {
+                console.log(`[Nylah audio] voice ended: ${displayName}`);
+                restoreMusic();
+            };
+            voice.onerror = restoreMusic;
+            console.log(`[Nylah audio] HTML5 voice play() attempted: ${displayName}`);
+            try {
+                const result = voice.play();
+                if (result && typeof result.then === "function") {
+                    result.then(
+                        () => console.log(`[Nylah audio] voice play() resolved: ${displayName}`),
+                        (error) => {
+                            console.error(`[Nylah audio] voice play() rejected: ${displayName}`, error?.stack || error);
+                            restoreMusic();
+                        }
+                    );
+                }
+            } catch (error) {
+                console.error(`[Nylah audio] voice play() rejected: ${displayName}`, error?.stack || error);
+                restoreMusic();
+            }
+        };
+
+        globalThis.nylahSetDinosaurVoiceEnabled = (enabled) => {
+            nylahDinosaurVoiceEnabled = Boolean(enabled);
+            if (!nylahDinosaurVoiceEnabled && nylahActiveDinosaurVoice) {
+                nylahActiveDinosaurVoice.pause();
+                nylahActiveDinosaurVoice.currentTime = 0;
+                if (nylahRestoreDuckedMusic) nylahRestoreDuckedMusic();
+            }
         };
 
         function unlockNylahAudioFromPlay(event) {
