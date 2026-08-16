@@ -23,7 +23,8 @@ from pathlib import Path
 # do not rename
 async def custom_site():
     import embed
-    platform.document.body.style.background = "#111"
+    platform.document.documentElement.style.background = "#F3EEFA"
+    platform.document.body.style.background = "#F3EEFA"
 
     platform.window.transfer.hidden = true
     bundle = "nylah_dino_web"
@@ -164,7 +165,7 @@ config = {
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background: #EAF7F4;
+            background: #F3EEFA;
         }
 
         #transfer,
@@ -189,8 +190,8 @@ config = {
             gap: clamp(12px, 3vh, 24px);
             box-sizing: border-box;
             padding: 20px;
-            color: #60356f;
-            background: #EAF7F4;
+            color: #4B286D;
+            background: #F3EEFA;
             text-align: center;
         }
 
@@ -217,6 +218,17 @@ config = {
             margin: 0;
             padding: 0;
             overflow: hidden;
+            background: #F3EEFA;
+        }
+
+        /* Keep every browser/runtime layer surrounding the game lavender. */
+        #html,
+        #crt,
+        #pyconsole,
+        #terminal,
+        #transfer,
+        #infobox {
+            background: #F3EEFA;
         }
 
         /* No canvas border or padding: its CSS box maps directly to 800x480. */
@@ -371,7 +383,7 @@ height="720px"
 width="470px" height="90%"
 allowtransparency="true"
 style="z-index: 10;"
-style="background: #FFFFFF;"
+style="background: #F3EEFA;"
 frameborder="1"
                 allowfullscreen="true"
                 webkitallowfullscreen="true"
